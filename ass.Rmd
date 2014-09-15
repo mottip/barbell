@@ -1,0 +1,70 @@
+---
+title: "Barbell lift classifier"
+date: "September 9, 2014"
+output: html_document
+---
+
+# Synopsis
+
+A machine learning application for classifying excercise data is developed. Available data is used for learning and cross validation. Cross validation gives accuracy of 99.5% for the classifier. The classifer is tested against test data and classifier makes perfect score.
+
+# Preprocessing
+
+The data is loaded from a csv file. I could not find details of the parametes so without deeper understanding about the content the strategy is to let the classifier, the machine learning algorithm, do the work modelling. 
+  
+Explorative analysis indicate that within the data a big part of the data is empty. Could be very well that the rows are not homogenetic. There could be lines which are calculated summaries to portions that are time series. What ever is the case the parameters without more than half of valid content are filtered out.
+    
+```{r}           
+pml <- read.csv('pml-training.csv', na.strings= c('NA',"#DIV/0!",'"#DIV/0!"','','""' ))
+
+selcols <- c("raw_timestamp_part_1", "raw_timestamp_part_2", "num_window")
+for (i in 8:ncol(pml)) {
+  if ( sum(is.na(pml[,i])) < (nrow(pml)/2)) {
+    selcols = c(selcols, colnames(pml[i]))
+  }
+}
+pml <- pml[,selcols]
+```
+
+# Partitioning of data
+
+The data is paritioned two learning set and cross validation set. The purpose of cross validation is the estimate the predictie power of the model. The major part 70 % was assigned for training and remaining 30 % was assigned for validation. The outcome is in parameter named 'classe'
+
+```{r}
+require(caret)
+p<-createDataPartition(pml$classe,p=0.7)
+training <- pml[p[[1]],]
+crossv <- pml[-p[[1]],]
+```
+
+# Modelling
+
+Some preliminary runs was run on different algorithms. Boosting provided very high accuracy result on cross validation dataset. Random forest tree was providing marginally better result on cross validation dataset but due to much higer processing demand boosting was prefereed over it.
+  
+First random number generator is seeded to guarantee reproducibility of the results. A model is trained on training data in order to be able to predict outcome 'classe' from the rest of the parameters. Prediction is done on cross validation data. The accuracy is taken from confusion matrix. It indicates the amount of correct classifications in all cases. Using the particular model yields result of 99.5 %. Expected out of sample error in terms of wrong classfications among all therefore is 0.5 %.
+
+```{r, cache=TRUE}
+set.seed(1262)
+gbmFit <- train(classe~., method='gbm', data=training, verbose=FALSE)
+gbmPredict <- predict(gbmFit, crossv)
+gbmConf <-confusionMatrix(gbmPredict, crossv$classe)
+print(gbmConf$overall[1])
+```
+
+# The results 
+
+The results were predicted for test data. It was manually submitted to a web robot which reported all predictions to be correct.
+
+```{r}
+test <- read.csv('pml-testing.csv', na.strings= c('NA',"#DIV/0!",'"#DIV/0!"','','""' ))
+testPredict <- predict(gbmFit, test)
+answers <- as.character(testPredict)
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
